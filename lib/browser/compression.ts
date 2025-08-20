@@ -80,6 +80,7 @@ async function deflate_zstd(value: ArrayBuffer | Buffer | Uint8Array) {
   } else {
     input = new Uint8Array(value);
   }
+  console.log('ZSTD compress: type', typeof input, 'constructor', input.constructor.name, 'length', input.length, 'slice', input.slice(0, 32));
   try {
     const result = await compress(input, 3);
     console.log('ZSTD compress: end', result);
