@@ -6,26 +6,13 @@
 'use strict';
 import snappy from 'snappyjs';
 import * as brotli from './brotli.js';
-import * as zstdWorkers from '@yu7400ki/zstd-wasm/workers';
-
-interface ZstdModule {
-  compress: (input: Uint8Array, level?: number) => Promise<Uint8Array>;
-  decompress: (input: Uint8Array) => Promise<Uint8Array>;
-}
-const zstdWorkersModule: ZstdModule = zstdWorkers as unknown as ZstdModule;
-
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms);
-    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
-  });
-}
+import { compress, decompress } from '@yu7400ki/zstd-wasm/workers';
 
 type PARQUET_COMPRESSION_METHODS = Record<
   string,
   {
-  deflate: (value: ArrayBuffer | Buffer | Uint8Array | string) => Buffer | Promise<Buffer>;
-  inflate: (value: ArrayBuffer | Buffer | Uint8Array | string) => Buffer | Promise<Buffer>;
+    deflate: (value: any) => Buffer | Promise<Buffer>;
+    inflate: (value: any) => Buffer | Promise<Buffer>;
   }
 >;
 // LZO compression is disabled. See: https://github.com/LibertyDSNP/parquetjs/issues/18
@@ -55,7 +42,7 @@ export const PARQUET_COMPRESSION_METHODS: PARQUET_COMPRESSION_METHODS = {
 /**
  * Deflate a value using compression method `method`
  */
-export async function deflate(method: string, value: ArrayBuffer | Buffer | Uint8Array | string): Promise<Buffer> {
+export async function deflate(method: string, value: unknown): Promise<Buffer> {
   if (!(method in PARQUET_COMPRESSION_METHODS)) {
     throw new Error('invalid compression method: ' + method);
   }
@@ -63,63 +50,42 @@ export async function deflate(method: string, value: ArrayBuffer | Buffer | Uint
   return PARQUET_COMPRESSION_METHODS[method].deflate(value);
 }
 
-type InputLike = ArrayBuffer | Buffer | Uint8Array | string;
-
-function deflate_identity(value: InputLike) {
-  if (typeof value === 'string') return Buffer.from(value);
+function deflate_identity(value: ArrayBuffer | Buffer | Uint8Array) {
   return buffer_from_result(value);
 }
 
-function toBodyInit(value: InputLike): BodyInit {
-  if (typeof value === 'string') return value;
-  if (value instanceof Uint8Array) return (value as unknown) as BodyInit;
-  if (Buffer.isBuffer(value)) {
-    const buf = value as Buffer;
-    return (new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength) as unknown) as BodyInit;
-  }
-  return (value as ArrayBuffer) as unknown as BodyInit;
-}
-
-async function deflate_gzip(value: InputLike) {
+async function deflate_gzip(value: ArrayBuffer | Buffer | string) {
   const cs = new CompressionStream('gzip');
-  const pipedCs = new Response(toBodyInit(value)).body?.pipeThrough(cs);
+  const pipedCs = new Response(value).body?.pipeThrough(cs);
   return buffer_from_result(await new Response(pipedCs).arrayBuffer());
 }
 
-function deflate_snappy(value: InputLike) {
-  const compressedValue = snappy.compress(toUint8(value));
+function deflate_snappy(value: ArrayBuffer | Buffer | Uint8Array) {
+  const compressedValue = snappy.compress(value);
   return buffer_from_result(compressedValue);
 }
 
-async function deflate_brotli(value: InputLike) {
-  return buffer_from_result(await brotli.compress(toUint8(value)));
+async function deflate_brotli(value: Uint8Array) {
+  return buffer_from_result(await brotli.compress(value));
 }
 
-async function deflate_zstd(value: InputLike) {
-  console.log('ZSTD compress: start', value);
-  const input = toUint8(value);
-  console.log('ZSTD compress: type', typeof input, 'constructor', input.constructor.name, 'length', input.length, 'slice', input.slice(0, 32));
-  try {
-    // Try workers build first (fast path); fallback to main if it times out or errors
-    let result: Uint8Array;
-    try {
-      result = await withTimeout(zstdWorkersModule.compress(input, 3), 4000, 'zstd workers compress');
-    } catch (e) {
-      console.warn('ZSTD workers compress failed or timed out, falling back to main build:', e);
-      throw e;
-    }
-    console.log('ZSTD compress: end', result);
-    return buffer_from_result(result);
-  } catch (err) {
-    console.error('ZSTD compress error:', err);
-    throw err;
+async function deflate_zstd(value: ArrayBuffer | Buffer | Uint8Array) {
+  let input: Uint8Array;
+  if (value instanceof Uint8Array) {
+    input = value;
+  } else if (Buffer.isBuffer(value)) {
+    const buf = value as Buffer;
+    input = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  } else {
+    input = new Uint8Array(value);
   }
+  return buffer_from_result(await compress(input, 3));
 }
 
 /**
  * Inflate a value using compression method `method`
  */
-export async function inflate(method: string, value: InputLike): Promise<Buffer> {
+export async function inflate(method: string, value: unknown): Promise<Buffer> {
   if (!(method in PARQUET_COMPRESSION_METHODS)) {
     throw new Error('invalid compression method: ' + method);
   }
@@ -127,35 +93,36 @@ export async function inflate(method: string, value: InputLike): Promise<Buffer>
   return await PARQUET_COMPRESSION_METHODS[method].inflate(value);
 }
 
-async function inflate_identity(value: InputLike): Promise<Buffer> {
-  if (typeof value === 'string') return Buffer.from(value);
+async function inflate_identity(value: ArrayBuffer | Buffer | Uint8Array): Promise<Buffer> {
   return buffer_from_result(value);
 }
 
-async function inflate_gzip(value: InputLike) {
+async function inflate_gzip(value: Buffer | ArrayBuffer | string) {
   const ds = new DecompressionStream('gzip');
-  const pipedDs = new Response(toBodyInit(value)).body?.pipeThrough(ds);
+  const pipedDs = new Response(value).body?.pipeThrough(ds);
   return buffer_from_result(await new Response(pipedDs).arrayBuffer());
 }
 
-function inflate_snappy(value: InputLike) {
-  const uncompressedValue = snappy.uncompress(toUint8(value));
+function inflate_snappy(value: ArrayBuffer | Buffer | Uint8Array) {
+  const uncompressedValue = snappy.uncompress(value);
   return buffer_from_result(uncompressedValue);
 }
 
-async function inflate_brotli(value: InputLike) {
-  return buffer_from_result(await brotli.inflate(toUint8(value)));
+async function inflate_brotli(value: Uint8Array) {
+  return buffer_from_result(await brotli.inflate(value));
 }
 
-async function inflate_zstd(value: InputLike) {
-  const input = toUint8(value);
-  try {
-    const out = await withTimeout(zstdWorkersModule.decompress(input), 4000, 'zstd workers decompress');
-    return buffer_from_result(out);
-  } catch (e) {
-    console.warn('ZSTD workers decompress failed or timed out, falling back to main build:', e);
-    throw e;
+async function inflate_zstd(value: ArrayBuffer | Buffer | Uint8Array) {
+  let input: Uint8Array;
+  if (value instanceof Uint8Array) {
+    input = value;
+  } else if (Buffer.isBuffer(value)) {
+    const buf = value as Buffer;
+    input = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  } else {
+    input = new Uint8Array(value);
   }
+  return buffer_from_result(await decompress(input));
 }
 
 function buffer_from_result(result: ArrayBuffer | Buffer | Uint8Array): Buffer {
@@ -164,21 +131,4 @@ function buffer_from_result(result: ArrayBuffer | Buffer | Uint8Array): Buffer {
   } else {
     return Buffer.from(new Uint8Array(result));
   }
-}
-
-function toUint8(value: InputLike): Uint8Array {
-  // Always return a plain Uint8Array (not a Buffer subclass) to satisfy WASM/worker expectations
-  if (Buffer.isBuffer(value)) {
-    // Create a copy to ensure a plain Uint8Array instance
-    return new Uint8Array(value);
-  }
-  if (value instanceof Uint8Array) {
-    // If it's not a native Uint8Array (subclass), coerce to a real Uint8Array
-    if (value.constructor !== Uint8Array) {
-      return new Uint8Array(value);
-    }
-    return value;
-  }
-  if (typeof value === 'string') return new TextEncoder().encode(value);
-  return new Uint8Array(value);
 }
