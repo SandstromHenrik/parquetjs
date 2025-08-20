@@ -6,6 +6,7 @@
 'use strict';
 import snappy from 'snappyjs';
 import * as brotli from './brotli.js';
+import { compress, decompress } from '@yu7400ki/zstd-wasm/workers';
 
 type PARQUET_COMPRESSION_METHODS = Record<
   string,
@@ -31,6 +32,10 @@ export const PARQUET_COMPRESSION_METHODS: PARQUET_COMPRESSION_METHODS = {
   BROTLI: {
     deflate: deflate_brotli,
     inflate: inflate_brotli,
+  },
+  ZSTD: {
+    deflate: deflate_zstd,
+    inflate: inflate_zstd,
   },
 };
 
@@ -64,6 +69,19 @@ async function deflate_brotli(value: Uint8Array) {
   return buffer_from_result(await brotli.compress(value));
 }
 
+async function deflate_zstd(value: ArrayBuffer | Buffer | Uint8Array) {
+  let input: Uint8Array;
+  if (value instanceof Uint8Array) {
+    input = value;
+  } else if (Buffer.isBuffer(value)) {
+    const buf = value as Buffer;
+    input = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  } else {
+    input = new Uint8Array(value);
+  }
+  return buffer_from_result(await compress(input, 3));
+}
+
 /**
  * Inflate a value using compression method `method`
  */
@@ -92,6 +110,19 @@ function inflate_snappy(value: ArrayBuffer | Buffer | Uint8Array) {
 
 async function inflate_brotli(value: Uint8Array) {
   return buffer_from_result(await brotli.inflate(value));
+}
+
+async function inflate_zstd(value: ArrayBuffer | Buffer | Uint8Array) {
+  let input: Uint8Array;
+  if (value instanceof Uint8Array) {
+    input = value;
+  } else if (Buffer.isBuffer(value)) {
+    const buf = value as Buffer;
+    input = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  } else {
+    input = new Uint8Array(value);
+  }
+  return buffer_from_result(await decompress(input));
 }
 
 function buffer_from_result(result: ArrayBuffer | Buffer | Uint8Array): Buffer {
