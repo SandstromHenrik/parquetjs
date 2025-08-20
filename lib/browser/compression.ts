@@ -6,20 +6,14 @@
 'use strict';
 import snappy from 'snappyjs';
 import * as brotli from './brotli.js';
-// ZSTD: import both builds and choose at runtime to avoid dynamic import/code-splitting in Workers
 import * as zstdWorkers from '@yu7400ki/zstd-wasm/workers';
-import * as zstdMain from '@yu7400ki/zstd-wasm';
 
 interface ZstdModule {
   compress: (input: Uint8Array, level?: number) => Promise<Uint8Array>;
   decompress: (input: Uint8Array) => Promise<Uint8Array>;
 }
-const isCloudflareWorker = typeof (globalThis as { WebSocketPair?: unknown }).WebSocketPair === 'function';
-const hasDedicatedWorkers = typeof (globalThis as { Worker?: unknown }).Worker === 'function';
-// Prefer non-worker build in Cloudflare Workers or when DedicatedWorker is unavailable
-const zstdModule: ZstdModule = (isCloudflareWorker || !hasDedicatedWorkers)
-  ? (zstdMain as unknown as ZstdModule)
-  : (zstdWorkers as unknown as ZstdModule);
+
+const zstdModule: ZstdModule = zstdWorkers as unknown as ZstdModule;
 
 type PARQUET_COMPRESSION_METHODS = Record<
   string,
