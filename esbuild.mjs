@@ -8,7 +8,7 @@ const baseConfig = {
   define: {
     'process.env.NODE_DEBUG': 'false',
     'process.env.NODE_ENV': '"production"',
-    global: 'window',
+    global: 'globalThis',
   },
   inject: ['./esbuild-shims.mjs'],
   minify: true,
@@ -16,6 +16,8 @@ const baseConfig = {
   platform: 'browser', // default
   plugins: [compressionBrowserPlugin, watPlugin()],
   target: 'es2020', // default
+  // Don’t bundle zstd-wasm; let the runtime (Worker) resolve it to keep its worker/wasm loader intact
+  external: ['@yu7400ki/zstd-wasm', '@yu7400ki/zstd-wasm/workers'],
 };
 // configuration for generating test code in browser
 const testConfig = {
@@ -24,7 +26,7 @@ const testConfig = {
   define: {
     'process.env.NODE_DEBUG': 'false',
     'process.env.NODE_ENV': '"production"',
-    global: 'window',
+    global: 'globalThis',
   },
   inject: ['./esbuild-shims.mjs'],
   minify: false,
@@ -32,6 +34,7 @@ const testConfig = {
   platform: 'browser', // default
   plugins: [compressionBrowserPlugin, watPlugin()],
   target: 'es2020', // default
+  external: ['@yu7400ki/zstd-wasm', '@yu7400ki/zstd-wasm/workers'],
 };
 const targets = [
   {
