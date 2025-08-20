@@ -82,6 +82,7 @@ async function deflate_zstd(value: ArrayBuffer | Buffer | Uint8Array) {
   }
   try {
     const result = await compress(input, 3);
+    console.log('ZSTD compress: end', result);
     return buffer_from_result(result);
   } catch (err) {
     console.error('ZSTD compress error:', err);
