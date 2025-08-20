@@ -148,10 +148,17 @@ function buffer_from_result(result: ArrayBuffer | Buffer | Uint8Array): Buffer {
 }
 
 function toUint8(value: InputLike): Uint8Array {
-  if (value instanceof Uint8Array) return value;
+  // Always return a plain Uint8Array (not a Buffer subclass) to satisfy WASM/worker expectations
   if (Buffer.isBuffer(value)) {
-    const buf = value as Buffer;
-    return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+    // Create a copy to ensure a plain Uint8Array instance
+    return new Uint8Array(value);
+  }
+  if (value instanceof Uint8Array) {
+    // If it's not a native Uint8Array (subclass), coerce to a real Uint8Array
+    if (value.constructor !== Uint8Array) {
+      return new Uint8Array(value);
+    }
+    return value;
   }
   if (typeof value === 'string') return new TextEncoder().encode(value);
   return new Uint8Array(value);
