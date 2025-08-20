@@ -103,7 +103,7 @@ async function deflate_zstd(value: InputLike) {
     // Try workers build first (fast path); fallback to main if it times out or errors
     let result: Uint8Array;
     try {
-      result = await withTimeout(zstdWorkersModule.compress(input, 6), 4000, 'zstd workers compress');
+      result = await withTimeout(zstdWorkersModule.compress(input, 3), 4000, 'zstd workers compress');
     } catch (e) {
       console.warn('ZSTD workers compress failed or timed out, falling back to main build:', e);
       throw e;
