@@ -7,16 +7,12 @@
 import snappy from 'snappyjs';
 import * as brotli from './brotli.js';
 import * as zstdWorkers from '@yu7400ki/zstd-wasm/workers';
-import * as zstdMain from '@yu7400ki/zstd-wasm';
 
 interface ZstdModule {
   compress: (input: Uint8Array, level?: number) => Promise<Uint8Array>;
   decompress: (input: Uint8Array) => Promise<Uint8Array>;
 }
 const zstdWorkersModule: ZstdModule = zstdWorkers as unknown as ZstdModule;
-const zstdMainModule: ZstdModule = zstdMain as unknown as ZstdModule;
-
-const ZSTD_TIMEOUT_MS = 2000;
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -110,7 +106,7 @@ async function deflate_zstd(value: InputLike) {
       result = await withTimeout(zstdWorkersModule.compress(input, 3), 4000, 'zstd workers compress');
     } catch (e) {
       console.warn('ZSTD workers compress failed or timed out, falling back to main build:', e);
-      result = await zstdMainModule.compress(input, 3);
+      throw e;
     }
     console.log('ZSTD compress: end', result);
     return buffer_from_result(result);
@@ -158,8 +154,7 @@ async function inflate_zstd(value: InputLike) {
     return buffer_from_result(out);
   } catch (e) {
     console.warn('ZSTD workers decompress failed or timed out, falling back to main build:', e);
-    const out = await zstdMainModule.decompress(input);
-    return buffer_from_result(out);
+    throw e;
   }
 }
 
