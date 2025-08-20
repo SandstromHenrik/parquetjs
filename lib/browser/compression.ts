@@ -70,6 +70,7 @@ async function deflate_brotli(value: Uint8Array) {
 }
 
 async function deflate_zstd(value: ArrayBuffer | Buffer | Uint8Array) {
+  console.log('ZSTD compress: start', value);
   let input: Uint8Array;
   if (value instanceof Uint8Array) {
     input = value;
@@ -79,7 +80,13 @@ async function deflate_zstd(value: ArrayBuffer | Buffer | Uint8Array) {
   } else {
     input = new Uint8Array(value);
   }
-  return buffer_from_result(await compress(input, 3));
+  try {
+    const result = await compress(input, 3);
+    return buffer_from_result(result);
+  } catch (err) {
+    console.error('ZSTD compress error:', err);
+    throw err;
+  }
 }
 
 /**
