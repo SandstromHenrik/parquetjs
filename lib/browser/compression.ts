@@ -79,7 +79,7 @@ async function deflate_zstd(value: ArrayBuffer | Buffer | Uint8Array) {
   } else {
     input = new Uint8Array(value);
   }
-  return buffer_from_result(await compress(input, 6));
+  return buffer_from_result(await compress(input, 3));
 }
 
 /**
